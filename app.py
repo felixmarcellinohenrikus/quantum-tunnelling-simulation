@@ -213,8 +213,8 @@ tab1, tab2 = st.tabs([
 with tab1:
     st.markdown("""
     <div class="card-container">
-        <h3>📊 Visualisasi Incoming, Reflected & Transmitted Wave</h3>
-        <p class="caption">Grafik menunjukkan bagian real dari fungsi gelombang $\\psi(x)$ pada tiga wilayah: sebelum, di dalam, dan setelah penghalang potensial.</p>
+        <h3>📊 Visualisasi Gelombang</h3>
+        <p class="caption">Grafik menunjukkan bagian real dari fungsi gelombang pada tiga wilayah: sebelum, di dalam, dan setelah penghalang potensial.</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -241,7 +241,7 @@ with tab1:
         x=x_nm, y=real_psi, 
         mode='lines', 
         line=dict(color='#1f77b4', width=3), 
-        name="Re[$\\psi(x)$]"
+        name="ψ(x)"
     ))
     
     # Batas-batas penghalang (dipindahkan ke luar area)
