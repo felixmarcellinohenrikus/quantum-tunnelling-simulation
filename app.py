@@ -48,6 +48,16 @@ custom_css = """
         margin: 16px 0;
         border: 1px solid #eaeaea;
     }
+    .card-container h3 {
+        margin-top: 0;
+        margin-bottom: 8px;
+        color: #1f2937;
+    }
+    .card-container .caption {
+        color: #6b7280;
+        font-size: 0.9rem;
+        margin-bottom: 20px;
+    }
     .footer {
         text-align: center;
         padding: 24px 0;
@@ -63,6 +73,10 @@ custom_css = """
         height: 48px;
         padding: 0 20px;
         font-weight: 600;
+    }
+    /* Wrap Streamlit elements in card */
+    div[data-testid="stVerticalBlock"] > div:has(div.card-container) {
+        padding: 0;
     }
 </style>
 """
@@ -194,116 +208,124 @@ tab1, tab2, tab3 = st.tabs([
 
 # --- TAB 1: POTENSIAL & GELOMBANG ---
 with tab1:
-    with st.container():
-        st.markdown('<div class="card-container">', unsafe_allow_html=True)
-        st.subheader("Visualisasi Incoming, Reflected & Transmitted Wave")
-        st.caption("Grafik menunjukkan kerapatan probabilitas $|\\psi(x)|^2$ pada tiga wilayah: sebelum, di dalam, dan setelah penghalang potensial.")
-        
-        x_nm, psi_sq, barrier_L = get_wavefunction_profile(E_eV, V0_eV, L_nm, m_factor)
-        T_val = calculate_transmission(E_eV, V0_eV, L_nm, m_factor)
-        R_val = 1.0 - T_val
+    # Card container dengan HTML wrapper yang benar
+    st.markdown("""
+    <div class="card-container">
+        <h3>📊 Visualisasi Incoming, Reflected & Transmitted Wave</h3>
+        <p class="caption">Grafik menunjukkan kerapatan probabilitas $|\\psi(x)|^2$ pada tiga wilayah: sebelum, di dalam, dan setelah penghalang potensial.</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    x_nm, psi_sq, barrier_L = get_wavefunction_profile(E_eV, V0_eV, L_nm, m_factor)
+    T_val = calculate_transmission(E_eV, V0_eV, L_nm, m_factor)
+    R_val = 1.0 - T_val
 
-        fig_wf = go.Figure()
-        fig_wf.add_vrect(x0=0, x1=barrier_L, fillcolor="rgba(255,165,0,0.2)", line_color="orange", line_width=1, annotation_text="V₀", annotation_position="top")
-        fig_wf.add_hline(y=0, line_dash="dot", line_color="gray")
-        
-        fig_wf.add_trace(go.Scatter(x=x_nm, y=psi_sq, mode='lines', line=dict(color='#1f77b4', width=3), name="|ψ(x)|²"))
-        fig_wf.add_vline(x=0, line_dash="dash", line_color="#ff7f0e", annotation_text="Batas Masuk")
-        fig_wf.add_vline(x=barrier_L, line_dash="dash", line_color="#ff7f0e", annotation_text="Batas Keluar")
+    fig_wf = go.Figure()
+    fig_wf.add_vrect(x0=0, x1=barrier_L, fillcolor="rgba(255,165,0,0.2)", line_color="orange", line_width=1, annotation_text="V₀", annotation_position="top")
+    fig_wf.add_hline(y=0, line_dash="dot", line_color="gray")
+    
+    fig_wf.add_trace(go.Scatter(x=x_nm, y=psi_sq, mode='lines', line=dict(color='#1f77b4', width=3), name="|ψ(x)|²"))
+    fig_wf.add_vline(x=0, line_dash="dash", line_color="#ff7f0e", annotation_text="Batas Masuk")
+    fig_wf.add_vline(x=barrier_L, line_dash="dash", line_color="#ff7f0e", annotation_text="Batas Keluar")
 
-        fig_wf.update_layout(
-            height=400,
-            xaxis_title="Posisi x [nm]",
-            yaxis_title="Kerapatan Probabilitas (Ternormalisasi)",
-            template="plotly_white",
-            showlegend=True,
-            legend=dict(y=1.1, x=0.01)
-        )
-        fig_wf.update_yaxes(range=[0, 1.1])
-        st.plotly_chart(fig_wf, use_container_width=True)
+    fig_wf.update_layout(
+        height=400,
+        xaxis_title="Posisi x [nm]",
+        yaxis_title="Kerapatan Probabilitas (Ternormalisasi)",
+        template="plotly_white",
+        showlegend=True,
+        legend=dict(y=1.1, x=0.01)
+    )
+    fig_wf.update_yaxes(range=[0, 1.1])
+    st.plotly_chart(fig_wf, use_container_width=True)
 
-        st.markdown(f"""
-        **Hasil Perhitungan Koefisien:**
-        - Probabilitas Transmisi (T): `{T_val:.4f}` ({T_val*100:.2f}%)
-        - Probabilitas Refleksi (R): `{R_val:.4f}` ({R_val*100:.2f}%)
-        """)
-        st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown(f"""
+    <div class="card-container">
+        <h4>📈 Hasil Perhitungan Koefisien:</h4>
+        <ul>
+            <li><strong>Probabilitas Transmisi (T):</strong> {T_val:.4f} ({T_val*100:.2f}%)</li>
+            <li><strong>Probabilitas Refleksi (R):</strong> {R_val:.4f} ({R_val*100:.2f}%)</li>
+        </ul>
+    </div>
+    """, unsafe_allow_html=True)
 
 # --- TAB 2: PROBABILITAS TUNNELING ---
 with tab2:
-    with st.container():
-        st.markdown('<div class="card-container">', unsafe_allow_html=True)
-        st.subheader("Hubungan Energi & Lebar Barrier terhadap Probabilitas Tunneling")
-        
-        # Kurva T vs E
-        E_range = np.linspace(0.1, V0_eV + 5.0, 150)
-        T_vs_E = calculate_transmission(E_range, V0_eV, L_nm, m_factor)
-        
-        # Kurva T vs L
-        L_range = np.linspace(0.05, 2.5, 150)
-        T_vs_L = calculate_transmission(E_eV, V0_eV, L_range, m_factor)
+    st.markdown("""
+    <div class="card-container">
+        <h3>📊 Hubungan Energi & Lebar Barrier terhadap Probabilitas Tunneling</h3>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Kurva T vs E
+    E_range = np.linspace(0.1, V0_eV + 5.0, 150)
+    T_vs_E = calculate_transmission(E_range, V0_eV, L_nm, m_factor)
+    
+    # Kurva T vs L
+    L_range = np.linspace(0.05, 2.5, 150)
+    T_vs_L = calculate_transmission(E_eV, V0_eV, L_range, m_factor)
 
-        fig_prob = make_subplots(rows=1, cols=2, subplot_titles=("Transmisi vs Energi (E)", "Transmisi vs Lebar Barrier (L)"))
-        fig_prob.add_trace(go.Scatter(x=E_range, y=T_vs_E, mode='lines', line=dict(color='#2ca02c', width=3), name="T(E)"), row=1, col=1)
-        fig_prob.add_vline(x=E_eV, line_dash="dash", line_color="red", row=1, col=1)
-        fig_prob.add_annotation(x=E_eV, y=0.5, text=f"E = {E_eV} eV", showarrow=False, row=1, col=1)
+    fig_prob = make_subplots(rows=1, cols=2, subplot_titles=("Transmisi vs Energi (E)", "Transmisi vs Lebar Barrier (L)"))
+    fig_prob.add_trace(go.Scatter(x=E_range, y=T_vs_E, mode='lines', line=dict(color='#2ca02c', width=3), name="T(E)"), row=1, col=1)
+    fig_prob.add_vline(x=E_eV, line_dash="dash", line_color="red", row=1, col=1)
+    fig_prob.add_annotation(x=E_eV, y=0.5, text=f"E = {E_eV} eV", showarrow=False, row=1, col=1)
 
-        fig_prob.add_trace(go.Scatter(x=L_range, y=T_vs_L, mode='lines', line=dict(color='#9467bd', width=3), name="T(L)"), row=1, col=2)
-        fig_prob.add_vline(x=L_nm, line_dash="dash", line_color="red", row=1, col=2)
-        fig_prob.add_annotation(x=L_nm, y=0.5, text=f"L = {L_nm} nm", showarrow=False, row=1, col=2)
+    fig_prob.add_trace(go.Scatter(x=L_range, y=T_vs_L, mode='lines', line=dict(color='#9467bd', width=3), name="T(L)"), row=1, col=2)
+    fig_prob.add_vline(x=L_nm, line_dash="dash", line_color="red", row=1, col=2)
+    fig_prob.add_annotation(x=L_nm, y=0.5, text=f"L = {L_nm} nm", showarrow=False, row=1, col=2)
 
-        fig_prob.update_layout(height=420, template="plotly_white")
-        fig_prob.update_xaxes(title_text="Energi E [eV]", row=1, col=1)
-        fig_prob.update_yaxes(title_text="Probabilitas Transmisi", row=1, col=1)
-        fig_prob.update_xaxes(title_text="Lebar Barrier L [nm]", row=1, col=2)
-        fig_prob.update_yaxes(title_text="Probabilitas Transmisi", row=1, col=2)
-        st.plotly_chart(fig_prob, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+    fig_prob.update_layout(height=420, template="plotly_white")
+    fig_prob.update_xaxes(title_text="Energi E [eV]", row=1, col=1)
+    fig_prob.update_yaxes(title_text="Probabilitas Transmisi", row=1, col=1)
+    fig_prob.update_xaxes(title_text="Lebar Barrier L [nm]", row=1, col=2)
+    fig_prob.update_yaxes(title_text="Probabilitas Transmisi", row=1, col=2)
+    st.plotly_chart(fig_prob, use_container_width=True)
 
 # --- TAB 3: SIMULASI STM ---
 with tab3:
-    with st.container():
-        st.markdown('<div class="card-container">', unsafe_allow_html=True)
-        st.subheader("Simulasi Arus Tunneling & Pemetaan Permukaan Atomik Virtual")
-        st.caption("Model konstan-height: Arus tunneling $I \\propto e^{-2\\kappa z}$. Warna terang menunjukkan arus lebih tinggi (jarak lebih dekat ke atom).")
+    st.markdown("""
+    <div class="card-container">
+        <h3>🔬 Simulasi Arus Tunneling & Pemetaan Permukaan Atomik Virtual</h3>
+        <p class="caption">Model konstan-height: Arus tunneling $I \\propto e^{-2\\kappa z}$. Warna terang menunjukkan arus lebih tinggi (jarak lebih dekat ke atom).</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    nx, ny = grid_res, grid_res
+    x = np.linspace(-1.5, 1.5, nx)
+    y = np.linspace(-1.5, 1.5, ny)
+    X, Y = np.meshgrid(x, y)
+    
+    atom_positions = [(i*0.4 + (j%2)*0.2, j*0.35) for i in range(-3,4) for j in range(-3,4)]
+    
+    sigma = 0.12
+    Z_surf = np.zeros_like(X)
+    for ax, ay in atom_positions:
+        Z_surf += 0.2 * np.exp(-((X-ax)**2 + (Y-ay)**2) / (2*sigma**2))
         
-        nx, ny = grid_res, grid_res
-        x = np.linspace(-1.5, 1.5, nx)
-        y = np.linspace(-1.5, 1.5, ny)
-        X, Y = np.meshgrid(x, y)
-        
-        atom_positions = [(i*0.4 + (j%2)*0.2, j*0.35) for i in range(-3,4) for j in range(-3,4)]
-        
-        sigma = 0.12
-        Z_surf = np.zeros_like(X)
-        for ax, ay in atom_positions:
-            Z_surf += 0.2 * np.exp(-((X-ax)**2 + (Y-ay)**2) / (2*sigma**2))
-            
-        kappa_STM = np.sqrt(2 * M_E * work_func * EV_J) / HBAR
-        tip_z = tip_height * 1e-10
-        I_rel = np.exp(-2 * kappa_STM * (tip_z - Z_surf))
-        I_rel /= I_rel.max()
-        
-        fig_stm = go.Figure()
-        fig_stm.add_trace(go.Heatmap(
-            z=I_rel, x=x, y=y, colorscale="Viridis", zmin=0, zmax=1,
-            colorbar=dict(title="Arus Relatif", thickness=15, len=0.5),
-            hovertemplate="x: %{x:.2f} nm<br>y: %{y:.2f} nm<br>I: %{z:.3f}<extra></extra>"
-        ))
-        fig_stm.add_scatter(x=[ax for ax, _ in atom_positions], y=[ay for _, ay in atom_positions],
-                            mode='markers', marker=dict(size=8, color='red', symbol='x'), name="Posisi Atom")
-        
-        fig_stm.update_layout(
-            height=500,
-            xaxis_title="Posisi X [nm]",
-            yaxis_title="Posisi Y [nm]",
-            template="plotly_white",
-            showlegend=True
-        )
-        st.plotly_chart(fig_stm, use_container_width=True)
-        
-        st.info("💡 **Catatan Pembelajaran:** Dalam mikroskop STM, arus tunneling bersifat eksponensial terhadap jarak ujung-sample. Perubahan 0.1 nm dapat mengubah arus hingga satu orde magnitudo, memungkinkan resolusi atomik.")
-        st.markdown('</div>', unsafe_allow_html=True)
+    kappa_STM = np.sqrt(2 * M_E * work_func * EV_J) / HBAR
+    tip_z = tip_height * 1e-10
+    I_rel = np.exp(-2 * kappa_STM * (tip_z - Z_surf))
+    I_rel /= I_rel.max()
+    
+    fig_stm = go.Figure()
+    fig_stm.add_trace(go.Heatmap(
+        z=I_rel, x=x, y=y, colorscale="Viridis", zmin=0, zmax=1,
+        colorbar=dict(title="Arus Relatif", thickness=15, len=0.5),
+        hovertemplate="x: %{x:.2f} nm<br>y: %{y:.2f} nm<br>I: %{z:.3f}<extra></extra>"
+    ))
+    fig_stm.add_scatter(x=[ax for ax, _ in atom_positions], y=[ay for _, ay in atom_positions],
+                        mode='markers', marker=dict(size=8, color='red', symbol='x'), name="Posisi Atom")
+    
+    fig_stm.update_layout(
+        height=500,
+        xaxis_title="Posisi X [nm]",
+        yaxis_title="Posisi Y [nm]",
+        template="plotly_white",
+        showlegend=True
+    )
+    st.plotly_chart(fig_stm, use_container_width=True)
+    
+    st.info("💡 **Catatan Pembelajaran:** Dalam mikroskop STM, arus tunneling bersifat eksponensial terhadap jarak ujung-sample. Perubahan 0.1 nm dapat mengubah arus hingga satu orde magnitudo, memungkinkan resolusi atomik.")
 
 # =============================================================================
 # FOOTER
