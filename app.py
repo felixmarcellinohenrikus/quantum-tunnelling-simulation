@@ -55,8 +55,9 @@ custom_css = """
     }
     .card-container .caption {
         color: #6b7280;
-        font-size: 0.9rem;
+        font-size: 0.95rem;
         margin-bottom: 20px;
+        line-height: 1.6;
     }
     .footer {
         text-align: center;
@@ -74,9 +75,9 @@ custom_css = """
         padding: 0 20px;
         font-weight: 600;
     }
-    /* Wrap Streamlit elements in card */
-    div[data-testid="stVerticalBlock"] > div:has(div.card-container) {
-        padding: 0;
+    /* Perbaikan tampilan math */
+    .katex {
+        font-size: 1.05em !important;
     }
 </style>
 """
@@ -95,40 +96,35 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =============================================================================
-# PHYSICS UTILITIES (FULLY VECTORIZED & BROADCAST-COMPATIBLE)
+# PHYSICS UTILITIES
 # =============================================================================
 HBAR = 1.0545718e-34   # J·s
 M_E  = 9.1093837e-31   # kg
 EV_J = 1.602176634e-19 # J/eV
 
 def calculate_transmission(E_eV, V0_eV, L_nm, m_factor=1.0):
-    """Menghitung koefisien transmisi T untuk penghalang persegi.
-    Mendukung input skalar maupun array melalui broadcasting otomatis."""
+    """Menghitung koefisien transmisi T untuk penghalang persegi."""
     E = np.asarray(E_eV, dtype=float) * EV_J
     V0 = np.asarray(V0_eV, dtype=float) * EV_J
     L = np.asarray(L_nm, dtype=float) * 1e-9
     m = m_factor * M_E
 
-    # Broadcasting: menyamakan dimensi skalar & array
     E, V0, L = np.broadcast_arrays(E, V0, L)
     out_shape = E.shape
     T = np.zeros(out_shape, dtype=float)
 
-    # 1. E < V0 (Regime Tunneling)
     mask_t = E < V0
     if np.any(mask_t):
         kappa = np.sqrt(2 * m * (V0[mask_t] - E[mask_t])) / HBAR
         denom = 4 * E[mask_t] * (V0[mask_t] - E[mask_t])
         T[mask_t] = 1.0 / (1.0 + (V0[mask_t]**2 * np.sinh(kappa * L[mask_t])**2) / denom)
 
-    # 2. E > V0 (Di atas penghalang)
     mask_a = E > V0
     if np.any(mask_a):
         k2 = np.sqrt(2 * m * (E[mask_a] - V0[mask_a])) / HBAR
         denom = 4 * E[mask_a] * (E[mask_a] - V0[mask_a])
         T[mask_a] = 1.0 / (1.0 + (V0[mask_a]**2 * np.sin(k2 * L[mask_a])**2) / denom)
 
-    # 3. E ≈ V0 (Limit analitik)
     mask_e = np.isclose(E, V0)
     if np.any(mask_e):
         T[mask_e] = 1.0 / (1.0 + (m * V0[mask_e] * L[mask_e]**2) / (2 * HBAR**2))
@@ -191,28 +187,20 @@ with st.sidebar:
     L_nm = st.slider("Lebar Penghalang (L) [nm]", 0.1, 2.5, 0.5, 0.05)
     m_factor = st.slider("Massa Partikel (dalam mₑ)", 0.1, 5.0, 1.0, 0.1)
 
-    st.divider()
-    st.header("🔬 Parameter Scanning Tunneling Microscope")
-    tip_height = st.slider("Jarak Ujung STM (z) [Å]", 2.0, 10.0, 5.0, 0.5)
-    grid_res = st.slider("Resolusi Grid Simulasi", 50, 150, 100, 10)
-    work_func = st.slider("Fungsi Kerja Logam (Φ) [eV]", 3.5, 5.5, 4.5, 0.1)
-
 # =============================================================================
 # MAIN CONTENT TABS
 # =============================================================================
-tab1, tab2, tab3 = st.tabs([
+tab1, tab2 = st.tabs([
     "📈 Potensial & Profil Gelombang",
-    "📊 Analisis Probabilitas Tunneling",
-    "🔬 Simulasi Arus & Pemetaan STM"
+    "📊 Analisis Probabilitas Tunneling"
 ])
 
 # --- TAB 1: POTENSIAL & GELOMBANG ---
 with tab1:
-    # Card container dengan HTML wrapper yang benar
     st.markdown("""
     <div class="card-container">
         <h3>📊 Visualisasi Incoming, Reflected & Transmitted Wave</h3>
-        <p class="caption">Grafik menunjukkan kerapatan probabilitas $|\\psi(x)|^2$ pada tiga wilayah: sebelum, di dalam, dan setelah penghalang potensial.</p>
+        <p class="caption">Grafik menunjukkan kerapatan probabilitas $|\psi(x)|^2$ pada tiga wilayah: sebelum, di dalam, dan setelah penghalang potensial.</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -221,12 +209,51 @@ with tab1:
     R_val = 1.0 - T_val
 
     fig_wf = go.Figure()
-    fig_wf.add_vrect(x0=0, x1=barrier_L, fillcolor="rgba(255,165,0,0.2)", line_color="orange", line_width=1, annotation_text="V₀", annotation_position="top")
+    
+    # Penghalang Potensial
+    fig_wf.add_vrect(
+        x0=0, x1=barrier_L, 
+        fillcolor="rgba(255,165,0,0.2)", 
+        line_color="orange", 
+        line_width=1,
+        layer="below"
+    )
+    
+    # Garis referensi y=0
     fig_wf.add_hline(y=0, line_dash="dot", line_color="gray")
     
-    fig_wf.add_trace(go.Scatter(x=x_nm, y=psi_sq, mode='lines', line=dict(color='#1f77b4', width=3), name="|ψ(x)|²"))
-    fig_wf.add_vline(x=0, line_dash="dash", line_color="#ff7f0e", annotation_text="Batas Masuk")
-    fig_wf.add_vline(x=barrier_L, line_dash="dash", line_color="#ff7f0e", annotation_text="Batas Keluar")
+    # Gelombang
+    fig_wf.add_trace(go.Scatter(
+        x=x_nm, y=psi_sq, 
+        mode='lines', 
+        line=dict(color='#1f77b4', width=3), 
+        name="|ψ(x)|²"
+    ))
+    
+    # Batas-batas penghalang (dipindahkan ke luar area)
+    fig_wf.add_vline(x=0, line_dash="dash", line_color="#ff7f0e")
+    fig_wf.add_annotation(
+        x=-0.3, y=0.9, 
+        text="Batas Masuk", 
+        showarrow=False,
+        font=dict(size=11, color="#ff7f0e"),
+        bgcolor="rgba(255,255,255,0.8)",
+        bordercolor="#ff7f0e",
+        borderwidth=1,
+        borderpad=4
+    )
+    
+    fig_wf.add_vline(x=barrier_L, line_dash="dash", line_color="#ff7f0e")
+    fig_wf.add_annotation(
+        x=barrier_L + 0.3, y=0.9, 
+        text="Batas Keluar", 
+        showarrow=False,
+        font=dict(size=11, color="#ff7f0e"),
+        bgcolor="rgba(255,255,255,0.8)",
+        bordercolor="#ff7f0e",
+        borderwidth=1,
+        borderpad=4
+    )
 
     fig_wf.update_layout(
         height=400,
@@ -234,7 +261,8 @@ with tab1:
         yaxis_title="Kerapatan Probabilitas (Ternormalisasi)",
         template="plotly_white",
         showlegend=True,
-        legend=dict(y=1.1, x=0.01)
+        legend=dict(y=1.1, x=0.01),
+        margin=dict(l=60, r=60, t=40, b=60)
     )
     fig_wf.update_yaxes(range=[0, 1.1])
     st.plotly_chart(fig_wf, use_container_width=True)
@@ -253,7 +281,7 @@ with tab1:
 with tab2:
     st.markdown("""
     <div class="card-container">
-        <h3>📊 Hubungan Energi & Lebar Barrier terhadap Probabilitas Tunneling</h3>
+        <h3> Hubungan Energi & Lebar Barrier terhadap Probabilitas Tunneling</h3>
     </div>
     """, unsafe_allow_html=True)
     
@@ -266,6 +294,7 @@ with tab2:
     T_vs_L = calculate_transmission(E_eV, V0_eV, L_range, m_factor)
 
     fig_prob = make_subplots(rows=1, cols=2, subplot_titles=("Transmisi vs Energi (E)", "Transmisi vs Lebar Barrier (L)"))
+    
     fig_prob.add_trace(go.Scatter(x=E_range, y=T_vs_E, mode='lines', line=dict(color='#2ca02c', width=3), name="T(E)"), row=1, col=1)
     fig_prob.add_vline(x=E_eV, line_dash="dash", line_color="red", row=1, col=1)
     fig_prob.add_annotation(x=E_eV, y=0.5, text=f"E = {E_eV} eV", showarrow=False, row=1, col=1)
@@ -280,52 +309,6 @@ with tab2:
     fig_prob.update_xaxes(title_text="Lebar Barrier L [nm]", row=1, col=2)
     fig_prob.update_yaxes(title_text="Probabilitas Transmisi", row=1, col=2)
     st.plotly_chart(fig_prob, use_container_width=True)
-
-# --- TAB 3: SIMULASI STM ---
-with tab3:
-    st.markdown("""
-    <div class="card-container">
-        <h3>🔬 Simulasi Arus Tunneling & Pemetaan Permukaan Atomik Virtual</h3>
-        <p class="caption">Model konstan-height: Arus tunneling $I \\propto e^{-2\\kappa z}$. Warna terang menunjukkan arus lebih tinggi (jarak lebih dekat ke atom).</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    nx, ny = grid_res, grid_res
-    x = np.linspace(-1.5, 1.5, nx)
-    y = np.linspace(-1.5, 1.5, ny)
-    X, Y = np.meshgrid(x, y)
-    
-    atom_positions = [(i*0.4 + (j%2)*0.2, j*0.35) for i in range(-3,4) for j in range(-3,4)]
-    
-    sigma = 0.12
-    Z_surf = np.zeros_like(X)
-    for ax, ay in atom_positions:
-        Z_surf += 0.2 * np.exp(-((X-ax)**2 + (Y-ay)**2) / (2*sigma**2))
-        
-    kappa_STM = np.sqrt(2 * M_E * work_func * EV_J) / HBAR
-    tip_z = tip_height * 1e-10
-    I_rel = np.exp(-2 * kappa_STM * (tip_z - Z_surf))
-    I_rel /= I_rel.max()
-    
-    fig_stm = go.Figure()
-    fig_stm.add_trace(go.Heatmap(
-        z=I_rel, x=x, y=y, colorscale="Viridis", zmin=0, zmax=1,
-        colorbar=dict(title="Arus Relatif", thickness=15, len=0.5),
-        hovertemplate="x: %{x:.2f} nm<br>y: %{y:.2f} nm<br>I: %{z:.3f}<extra></extra>"
-    ))
-    fig_stm.add_scatter(x=[ax for ax, _ in atom_positions], y=[ay for _, ay in atom_positions],
-                        mode='markers', marker=dict(size=8, color='red', symbol='x'), name="Posisi Atom")
-    
-    fig_stm.update_layout(
-        height=500,
-        xaxis_title="Posisi X [nm]",
-        yaxis_title="Posisi Y [nm]",
-        template="plotly_white",
-        showlegend=True
-    )
-    st.plotly_chart(fig_stm, use_container_width=True)
-    
-    st.info("💡 **Catatan Pembelajaran:** Dalam mikroskop STM, arus tunneling bersifat eksponensial terhadap jarak ujung-sample. Perubahan 0.1 nm dapat mengubah arus hingga satu orde magnitudo, memungkinkan resolusi atomik.")
 
 # =============================================================================
 # FOOTER
