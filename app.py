@@ -81,26 +81,42 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =============================================================================
-# PHYSICS UTILITIES
+# PHYSICS UTILITIES (VECTORIZED)
 # =============================================================================
 HBAR = 1.0545718e-34   # J·s
 M_E  = 9.1093837e-31   # kg
 EV_J = 1.602176634e-19 # J/eV
 
 def calculate_transmission(E_eV, V0_eV, L_nm, m_factor=1.0):
-    """Menghitung koefisien transmisi T untuk penghalang persegi."""
-    E = E_eV * EV_J
-    V0 = V0_eV * EV_J
-    L = L_nm * 1e-9
+    """Menghitung koefisien transmisi T untuk penghalang persegi (mendukung skalar & array)."""
+    E = np.asarray(E_eV, dtype=float) * EV_J
+    V0 = np.asarray(V0_eV, dtype=float) * EV_J
+    L = np.asarray(L_nm, dtype=float) * 1e-9
     m = m_factor * M_E
 
-    if E < V0:
-        kappa = np.sqrt(2 * m * (V0 - E)) / HBAR
-        T = 1.0 / (1.0 + (V0**2 * np.sinh(kappa * L)**2) / (4 * E * (V0 - E)))
-    else:
-        k2 = np.sqrt(2 * m * (E - V0)) / HBAR
-        T = 1.0 / (1.0 + (V0**2 * np.sin(k2 * L)**2) / (4 * E * (E - V0)))
-    return np.clip(T, 0, 1)
+    T = np.zeros_like(E, dtype=float)
+
+    # Kasus 1: E < V0 (Regime Tunneling)
+    mask_t = E < V0
+    if np.any(mask_t):
+        kappa = np.sqrt(2 * m * (V0[mask_t] - E[mask_t])) / HBAR
+        T[mask_t] = 1.0 / (1.0 + (V0[mask_t]**2 * np.sinh(kappa * L[mask_t])**2) /
+                           (4 * E[mask_t] * (V0[mask_t] - E[mask_t])))
+
+    # Kasus 2: E > V0 (Di atas penghalang)
+    mask_a = E > V0
+    if np.any(mask_a):
+        k2 = np.sqrt(2 * m * (E[mask_a] - V0[mask_a])) / HBAR
+        T[mask_a] = 1.0 / (1.0 + (V0[mask_a]**2 * np.sin(k2 * L[mask_a])**2) /
+                           (4 * E[mask_a] * (E[mask_a] - V0[mask_a])))
+
+    # Kasus 3: E ≈ V0 (Limit analitik)
+    mask_e = np.isclose(E, V0)
+    if np.any(mask_e):
+        T[mask_e] = 1.0 / (1.0 + (m * V0[mask_e] * L[mask_e]**2) / (2 * HBAR**2))
+
+    T = np.clip(T, 0, 1)
+    return T.item() if T.ndim == 0 else T
 
 def get_wavefunction_profile(E_eV, V0_eV, L_nm, m_factor=1.0):
     """Mengembalikan posisi (nm) dan kerapatan probabilitas |ψ|²."""
@@ -117,7 +133,6 @@ def get_wavefunction_profile(E_eV, V0_eV, L_nm, m_factor=1.0):
         D = (k1**2 + kappa**2) * np.sinh(kappa * L) + 2j * k1 * kappa * np.cosh(kappa * L)
         R = (k1**2 + kappa**2) * np.sinh(kappa * L) / D
         T_amp = 2j * k1 * kappa * np.exp(-1j * k1 * L) / D
-        # Daerah II: A*exp(kappa*x) + B*exp(-kappa*x)
         A = ((1 + R) * kappa + 1j * k1 * (1 - R)) / (2 * kappa)
         B = (1 + R) - A
     else:
@@ -125,7 +140,6 @@ def get_wavefunction_profile(E_eV, V0_eV, L_nm, m_factor=1.0):
         D = (k1**2 - k2**2) * np.sin(k2 * L) + 2j * k1 * k2 * np.cos(k2 * L)
         R = (k1**2 - k2**2) * np.sin(k2 * L) / D
         T_amp = 2j * k1 * k2 * np.exp(-1j * k1 * L) / D
-        # Daerah II: A*exp(ik2*x) + B*exp(-ik2*x)
         A = ((1 + R) * k2 + k1 * (1 - R)) / (2 * k2)
         B = (1 + R) - A
         k2_eff = k2
@@ -134,22 +148,18 @@ def get_wavefunction_profile(E_eV, V0_eV, L_nm, m_factor=1.0):
     x_si = x_nm * 1e-9
     psi_sq = np.zeros_like(x_nm)
 
-    # Wilayah I (x < 0)
     m1 = x_nm < 0
     psi_sq[m1] = np.abs(np.exp(1j * k1 * x_si[m1]) + R * np.exp(-1j * k1 * x_si[m1]))**2
 
-    # Wilayah II (0 <= x <= L)
     m2 = (x_nm >= 0) & (x_nm <= L_nm)
     if E < V0:
         psi_sq[m2] = np.abs(A * np.exp(kappa * x_si[m2]) + B * np.exp(-kappa * x_si[m2]))**2
     else:
         psi_sq[m2] = np.abs(A * np.exp(1j * k2_eff * x_si[m2]) + B * np.exp(-1j * k2_eff * x_si[m2]))**2
 
-    # Wilayah III (x > L)
     m3 = x_nm > L_nm
     psi_sq[m3] = np.abs(T_amp * np.exp(1j * k1 * x_si[m3]))**2
 
-    # Normalisasi untuk visualisasi yang lebih stabil
     psi_sq /= np.max(psi_sq) if np.max(psi_sq) > 0 else 1.0
     return x_nm, psi_sq, L_nm
 
@@ -190,11 +200,9 @@ with tab1:
         R_val = 1.0 - T_val
 
         fig_wf = go.Figure()
-        # Penghalang Potensial (visual reference)
         fig_wf.add_vrect(x0=0, x1=barrier_L, fillcolor="rgba(255,165,0,0.2)", line_color="orange", line_width=1, annotation_text="V₀", annotation_position="top")
         fig_wf.add_hline(y=0, line_dash="dot", line_color="gray")
         
-        # Gelombang
         fig_wf.add_trace(go.Scatter(x=x_nm, y=psi_sq, mode='lines', line=dict(color='#1f77b4', width=3), name="|ψ(x)|²"))
         fig_wf.add_vline(x=0, line_dash="dash", line_color="#ff7f0e", annotation_text="Batas Masuk")
         fig_wf.add_vline(x=barrier_L, line_dash="dash", line_color="#ff7f0e", annotation_text="Batas Keluar")
@@ -255,26 +263,20 @@ with tab3:
         st.subheader("Simulasi Arus Tunneling & Pemetaan Permukaan Atomik Virtual")
         st.caption("Model konstan-height: Arus tunneling $I \\propto e^{-2\\kappa z}$. Warna terang menunjukkan arus lebih tinggi (jarak lebih dekat ke atom).")
         
-        # Generate permukaan atomik sederhana
         nx, ny = grid_res, grid_res
         x = np.linspace(-1.5, 1.5, nx)
         y = np.linspace(-1.5, 1.5, ny)
         X, Y = np.meshgrid(x, y)
         
-        # Posisi atom (kisi heksagonal sederhana)
         atom_positions = [(i*0.4 + (j%2)*0.2, j*0.35) for i in range(-3,4) for j in range(-3,4)]
         
-        # Tinggi permukaan (superposisi Gaussian)
         sigma = 0.12
         Z_surf = np.zeros_like(X)
         for ax, ay in atom_positions:
             Z_surf += 0.2 * np.exp(-((X-ax)**2 + (Y-ay)**2) / (2*sigma**2))
             
-        # Perhitungan Arus Tunneling
-        # kappa = sqrt(2m*Phi)/hbar
         kappa_STM = np.sqrt(2 * M_E * work_func * EV_J) / HBAR
-        tip_z = tip_height * 1e-10 # convert Å to m
-        # Arus relatif
+        tip_z = tip_height * 1e-10
         I_rel = np.exp(-2 * kappa_STM * (tip_z - Z_surf))
         I_rel /= I_rel.max()
         
