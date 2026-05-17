@@ -81,36 +81,40 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =============================================================================
-# PHYSICS UTILITIES (VECTORIZED)
+# PHYSICS UTILITIES (FULLY VECTORIZED & BROADCAST-COMPATIBLE)
 # =============================================================================
 HBAR = 1.0545718e-34   # J·s
 M_E  = 9.1093837e-31   # kg
 EV_J = 1.602176634e-19 # J/eV
 
 def calculate_transmission(E_eV, V0_eV, L_nm, m_factor=1.0):
-    """Menghitung koefisien transmisi T untuk penghalang persegi (mendukung skalar & array)."""
+    """Menghitung koefisien transmisi T untuk penghalang persegi.
+    Mendukung input skalar maupun array melalui broadcasting otomatis."""
     E = np.asarray(E_eV, dtype=float) * EV_J
     V0 = np.asarray(V0_eV, dtype=float) * EV_J
     L = np.asarray(L_nm, dtype=float) * 1e-9
     m = m_factor * M_E
 
-    T = np.zeros_like(E, dtype=float)
+    # Broadcasting: menyamakan dimensi skalar & array
+    E, V0, L = np.broadcast_arrays(E, V0, L)
+    out_shape = E.shape
+    T = np.zeros(out_shape, dtype=float)
 
-    # Kasus 1: E < V0 (Regime Tunneling)
+    # 1. E < V0 (Regime Tunneling)
     mask_t = E < V0
     if np.any(mask_t):
         kappa = np.sqrt(2 * m * (V0[mask_t] - E[mask_t])) / HBAR
-        T[mask_t] = 1.0 / (1.0 + (V0[mask_t]**2 * np.sinh(kappa * L[mask_t])**2) /
-                           (4 * E[mask_t] * (V0[mask_t] - E[mask_t])))
+        denom = 4 * E[mask_t] * (V0[mask_t] - E[mask_t])
+        T[mask_t] = 1.0 / (1.0 + (V0[mask_t]**2 * np.sinh(kappa * L[mask_t])**2) / denom)
 
-    # Kasus 2: E > V0 (Di atas penghalang)
+    # 2. E > V0 (Di atas penghalang)
     mask_a = E > V0
     if np.any(mask_a):
         k2 = np.sqrt(2 * m * (E[mask_a] - V0[mask_a])) / HBAR
-        T[mask_a] = 1.0 / (1.0 + (V0[mask_a]**2 * np.sin(k2 * L[mask_a])**2) /
-                           (4 * E[mask_a] * (E[mask_a] - V0[mask_a])))
+        denom = 4 * E[mask_a] * (E[mask_a] - V0[mask_a])
+        T[mask_a] = 1.0 / (1.0 + (V0[mask_a]**2 * np.sin(k2 * L[mask_a])**2) / denom)
 
-    # Kasus 3: E ≈ V0 (Limit analitik)
+    # 3. E ≈ V0 (Limit analitik)
     mask_e = np.isclose(E, V0)
     if np.any(mask_e):
         T[mask_e] = 1.0 / (1.0 + (m * V0[mask_e] * L[mask_e]**2) / (2 * HBAR**2))
@@ -128,13 +132,13 @@ def get_wavefunction_profile(E_eV, V0_eV, L_nm, m_factor=1.0):
     k1 = np.sqrt(2 * m * E) / HBAR
     kappa = np.sqrt(2 * m * abs(V0 - E)) / HBAR if E != V0 else 1e-9
 
-    # Koefisien R dan T (amplitudo kompleks)
     if E < V0:
         D = (k1**2 + kappa**2) * np.sinh(kappa * L) + 2j * k1 * kappa * np.cosh(kappa * L)
         R = (k1**2 + kappa**2) * np.sinh(kappa * L) / D
         T_amp = 2j * k1 * kappa * np.exp(-1j * k1 * L) / D
         A = ((1 + R) * kappa + 1j * k1 * (1 - R)) / (2 * kappa)
         B = (1 + R) - A
+        k2_eff = None
     else:
         k2 = np.sqrt(2 * m * (E - V0)) / HBAR
         D = (k1**2 - k2**2) * np.sin(k2 * L) + 2j * k1 * k2 * np.cos(k2 * L)
