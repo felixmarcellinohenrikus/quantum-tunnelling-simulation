@@ -133,7 +133,7 @@ def calculate_transmission(E_eV, V0_eV, L_nm, m_factor=1.0):
     return T.item() if T.ndim == 0 else T
 
 def get_wavefunction_profile(E_eV, V0_eV, L_nm, m_factor=1.0):
-    """Mengembalikan posisi (nm) dan kerapatan probabilitas |ψ|²."""
+    """Mengembalikan posisi (nm) dan fungsi gelombang (real part) untuk visualisasi."""
     E = E_eV * EV_J
     V0 = V0_eV * EV_J
     L = L_nm * 1e-9
@@ -142,6 +142,7 @@ def get_wavefunction_profile(E_eV, V0_eV, L_nm, m_factor=1.0):
     k1 = np.sqrt(2 * m * E) / HBAR
     kappa = np.sqrt(2 * m * abs(V0 - E)) / HBAR if E != V0 else 1e-9
 
+    # Hitung koefisien refleksi dan transmisi
     if E < V0:
         D = (k1**2 + kappa**2) * np.sinh(kappa * L) + 2j * k1 * kappa * np.cosh(kappa * L)
         R = (k1**2 + kappa**2) * np.sinh(kappa * L) / D
@@ -158,24 +159,37 @@ def get_wavefunction_profile(E_eV, V0_eV, L_nm, m_factor=1.0):
         B = (1 + R) - A
         k2_eff = k2
 
+    # Buat array posisi
     x_nm = np.linspace(-2.0, L_nm + 3.0, 1200)
     x_si = x_nm * 1e-9
-    psi_sq = np.zeros_like(x_nm)
+    psi = np.zeros_like(x_nm, dtype=complex)  # Fungsi gelombang kompleks
 
+    # Wilayah I (x < 0): gelombang datang + gelombang terpantul
     m1 = x_nm < 0
-    psi_sq[m1] = np.abs(np.exp(1j * k1 * x_si[m1]) + R * np.exp(-1j * k1 * x_si[m1]))**2
-
+    psi[m1] = np.exp(1j * k1 * x_si[m1]) + R * np.exp(-1j * k1 * x_si[m1])
+    
+    # Wilayah II (0 <= x <= L): gelombang di dalam penghalang
     m2 = (x_nm >= 0) & (x_nm <= L_nm)
     if E < V0:
-        psi_sq[m2] = np.abs(A * np.exp(kappa * x_si[m2]) + B * np.exp(-kappa * x_si[m2]))**2
+        psi[m2] = A * np.exp(kappa * x_si[m2]) + B * np.exp(-kappa * x_si[m2])
     else:
-        psi_sq[m2] = np.abs(A * np.exp(1j * k2_eff * x_si[m2]) + B * np.exp(-1j * k2_eff * x_si[m2]))**2
-
+        psi[m2] = A * np.exp(1j * k2_eff * x_si[m2]) + B * np.exp(-1j * k2_eff * x_si[m2])
+    
+    # Wilayah III (x > L): gelombang transmisi
     m3 = x_nm > L_nm
-    psi_sq[m3] = np.abs(T_amp * np.exp(1j * k1 * x_si[m3]))**2
-
-    psi_sq /= np.max(psi_sq) if np.max(psi_sq) > 0 else 1.0
-    return x_nm, psi_sq, L_nm
+    psi[m3] = T_amp * np.exp(1j * k1 * x_si[m3])
+    
+    # Ambil bagian real dan normalisasi untuk visualisasi
+    real_psi = np.real(psi)
+    
+    # Normalisasi untuk visualisasi yang lebih jelas
+    max_val = np.max(np.abs(real_psi))
+    if max_val > 0:
+        real_psi = real_psi / max_val * 0.8 + 0.1  # Skala ke 0.1-0.9
+    else:
+        real_psi = np.zeros_like(real_psi)
+    
+    return x_nm, real_psi, L_nm
 
 # =============================================================================
 # SIDEBAR INPUTS
@@ -200,11 +214,11 @@ with tab1:
     st.markdown("""
     <div class="card-container">
         <h3>📊 Visualisasi Incoming, Reflected & Transmitted Wave</h3>
-        <p class="caption">Grafik menunjukkan kerapatan probabilitas $|\psi(x)|^2$ pada tiga wilayah: sebelum, di dalam, dan setelah penghalang potensial.</p>
+        <p class="caption">Grafik menunjukkan bagian real dari fungsi gelombang $\\psi(x)$ pada tiga wilayah: sebelum, di dalam, dan setelah penghalang potensial.</p>
     </div>
     """, unsafe_allow_html=True)
     
-    x_nm, psi_sq, barrier_L = get_wavefunction_profile(E_eV, V0_eV, L_nm, m_factor)
+    x_nm, real_psi, barrier_L = get_wavefunction_profile(E_eV, V0_eV, L_nm, m_factor)
     T_val = calculate_transmission(E_eV, V0_eV, L_nm, m_factor)
     R_val = 1.0 - T_val
 
@@ -222,12 +236,12 @@ with tab1:
     # Garis referensi y=0
     fig_wf.add_hline(y=0, line_dash="dot", line_color="gray")
     
-    # Gelombang
+    # Fungsi gelombang (bagian real)
     fig_wf.add_trace(go.Scatter(
-        x=x_nm, y=psi_sq, 
+        x=x_nm, y=real_psi, 
         mode='lines', 
         line=dict(color='#1f77b4', width=3), 
-        name="|ψ(x)|²"
+        name="Re[$\\psi(x)$]"
     ))
     
     # Batas-batas penghalang (dipindahkan ke luar area)
@@ -258,7 +272,7 @@ with tab1:
     fig_wf.update_layout(
         height=400,
         xaxis_title="Posisi x [nm]",
-        yaxis_title="Kerapatan Probabilitas (Ternormalisasi)",
+        yaxis_title="Amplitudo Gelombang (Ternormalisasi)",
         template="plotly_white",
         showlegend=True,
         legend=dict(y=1.1, x=0.01),
